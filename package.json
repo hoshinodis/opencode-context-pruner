@@ -4,13 +4,28 @@
   "description": "Continuous verbatim context pruning for OpenCode, powered by TypeSafe Jev. Port of fast-jev-compaction adapted to OpenCode's context hook.",
   "license": "MIT",
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "files": [
-    "index.ts",
-    "src",
+    "dist",
     "README.md",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hoshinodis/opencode-context-pruner.git"
+  },
+  "homepage": "https://github.com/hoshinodis/opencode-context-pruner#readme",
+  "bugs": {
+    "url": "https://github.com/hoshinodis/opencode-context-pruner/issues"
+  },
   "keywords": [
     "opencode",
     "opencode-plugin",
@@ -30,6 +45,8 @@
     "typescript": "^7.0.0"
   },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepare": "npm run build",
     "typecheck": "tsc --noEmit",
     "test": "tsc -p tsconfig.test.json && node out/test/adapter.test.js"
   }

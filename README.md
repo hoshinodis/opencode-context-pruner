@@ -39,9 +39,15 @@ result:   model replied normally
 ## Install
 
 ```sh
+opencode plugin add opencode-context-pruner
+export TYPESAFE_API_KEY=...
+```
+
+Or run from a local checkout:
+
+```sh
 git clone https://github.com/hoshinodis/opencode-context-pruner ~/app/opencode-context-pruner
 ln -s ~/app/opencode-context-pruner ~/.config/opencode/plugins/opencode-context-pruner
-export TYPESAFE_API_KEY=...
 ```
 
 ## Options

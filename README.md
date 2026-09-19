@@ -2,7 +2,7 @@
 
 Continuous, verbatim context pruning for [OpenCode](https://opencode.ai), powered by TypeSafe [Jev](https://docs.typesafe.ai/).
 
-Adapted from [fast-jev-compaction](https://github.com/tamaratran/fast-jev-compaction) (MIT). Upstream targets Claude Code's `session.compact` hook. OpenCode (tested: `opencode2` 0.0.0-beta-17963) does not implement a compaction hook, so this port prunes the **outgoing model request** from the `context` hook instead: stale tool calls/results are judged per call (keep / truncate / drop) and removed from the request view. Persisted history is never modified, so nothing disappears from your session log.
+Adapted from [fast-jev-compaction](https://github.com/tamaratran/fast-jev-compaction) (MIT). Upstream targets Claude Code's `session.compact` hook. OpenCode (tested: `opencode2` `0.0.0-beta-19271`) has no compaction hook to rely on, so this port prunes the **outgoing model request** from the `context` hook instead: stale tool calls/results are judged per call (keep / truncate / drop) and removed from the request view. Persisted history is never modified, so nothing disappears from your session log.
 
 ## Why
 
@@ -33,7 +33,7 @@ result:   model replied normally
 
 ## Requirements
 
-- OpenCode V2 beta **`0.0.0-beta-19271` or newer** (older builds, e.g. `beta-17963`, leak hook message changes into the session view — do not use this plugin there)
+- OpenCode V2 beta **`0.0.0-beta-19271` or newer**
 - TypeSafe API key: `TYPESAFE_API_KEY` in the environment of the OpenCode server, or `~/.config/opencode/typesafe/api_key`
 
 ## Install

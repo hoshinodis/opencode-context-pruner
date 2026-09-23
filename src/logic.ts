@@ -31,6 +31,14 @@ export type AdapterOptions = {
 
 export type Action = "keep" | "drop_result" | "drop_call"
 
+/**
+ * per-request: 毎リクエストで剪定する(キャッシュを壊す可能性がある)。
+ * compaction-only: compact の要約リクエストだけ剪定する(既定)。
+ */
+export type PruneMode = "per-request" | "compaction-only"
+
+export const DEFAULT_MODE: PruneMode = "compaction-only"
+
 export type PlanResult = {
   /** tool_use_id -> action (includes keeps, so the caller can cache all judgments). */
   actions: Map<string, Action>
@@ -117,6 +125,39 @@ export const totalResultChars = (messages: readonly AiMessage[]): number =>
         .reduce((inner, part) => inner + resultText(part.result).length, 0),
     0,
   )
+
+const messageText = (message: AiMessage): string =>
+  (Array.isArray(message.content) ? message.content : [])
+    .filter((part) => part.type === "text")
+    .map((part) => part.text ?? "")
+    .join("")
+    .trim()
+
+/** beta-19271 実測の compact プロンプト署名（初回/更新/システム側）。 */
+const COMPACTION_PROMPT =
+  /^(you must summarize the conversation above|update the existing checkpoint in the conversation above|you are a context summarization agent)/i
+/** 未知の変種を拾う保険。id が無い合成プロンプトに限って使う。 */
+const SYNTHETIC_PROMPT_HINT = /summar|checkpoint|conversation above|history shown/i
+
+/**
+ * 最後のユーザーメッセージが compact の要約リクエストかを判定する。
+ * beta-19271 では compaction フックが発火しないため、context フックで署名から検出する。
+ */
+export const isCompactionRequest = (messages: readonly AiMessage[]): boolean => {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index]
+    if (message?.role !== "user") continue
+    const text = messageText(message)
+    if (!text) continue
+    if (COMPACTION_PROMPT.test(text)) return true
+    if (message.id) return false
+    if (!SYNTHETIC_PROMPT_HINT.test(text)) return false
+    // 過去の checkpoint 本文（要約そのもの）を compact リクエストと誤認しない
+    if (text.includes("<conversation-checkpoint>") || text.includes("<recent-context>")) return false
+    return true
+  }
+  return false
+}
 
 const resolve = (options: AdapterOptions) =>
   resolveOptions({

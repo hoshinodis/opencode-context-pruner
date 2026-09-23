@@ -4,13 +4,15 @@ Continuous, verbatim context pruning for [OpenCode](https://opencode.ai), powere
 
 Adapted from [fast-jev-compaction](https://github.com/tamaratran/fast-jev-compaction) (MIT). Upstream targets Claude Code's `session.compact` hook. OpenCode (tested: `opencode2` `0.0.0-beta-19271`) has no compaction hook to rely on, so this port prunes the **outgoing model request** from the `context` hook instead: stale tool calls/results are judged per call (keep / truncate / drop) and removed from the request view. Persisted history is never modified, so nothing disappears from your session log.
 
+By default it prunes only **compaction requests** (`mode: "compaction-only"`): the summary input is the largest single request in a session, and pruning it does not invalidate a prompt cache that would otherwise be reused. Set `mode: "per-request"` to prune every request instead.
+
 ## Why
 
 Long coding sessions fill up with stale tool output. Instead of an LLM-written summary that paraphrases details away, every kept message stays **verbatim** — only old tool calls/results are dropped or truncated, decided by calibrated Jev judgments.
 
 ## How it works
 
-1. `session.hook("context")` runs right before each model dispatch
+1. `session.hook("context")` runs right before each model dispatch. In the default `compaction-only` mode the hook returns immediately unless the request is a compaction (summarization) request — detected by the synthetic, id-less compaction prompt (`You MUST summarize the conversation above…` / `Update the existing checkpoint…`), because the `compaction` hook never fires on `beta-19271`
 2. messages are converted to the vendor core's shape; each tool call gets two `noul` questions: keep the call? keep the result?
 3. decisions are applied to the request's message view:
    - `drop_call` removes the call and its result
@@ -57,6 +59,7 @@ Plugin options can be passed through OpenCode's plugin config; defaults below.
 | option | default | meaning |
 |---|---|---|
 | `enabled` | `true` | `TYPESAFE_COMPACTION=off` also disables |
+| `mode` | `compaction-only` | `compaction-only` prunes only compaction requests; `per-request` prunes every request (`TYPESAFE_PRUNER_MODE=per-request` also switches) |
 | `model` | `jev-1.13.0` | pinned Jev model |
 | `keepThreshold` | `0.15` | `noul` threshold for keeping a call/result (upstream uses `0.5`; see below) |
 | `preserveRecentMessages` | `10` | newest messages are never judged |
@@ -66,6 +69,10 @@ Plugin options can be passed through OpenCode's plugin config; defaults below.
 | `rejudge` | `never` | `always` re-judges everything on each request |
 | `apiKeyEnv` / `apiKeyFile` | `TYPESAFE_API_KEY` / `~/.config/opencode/typesafe/api_key` | key lookup |
 | `logFile` | `~/.config/opencode/context-pruner/decisions.jsonl` | JSONL decision log |
+
+### Why `compaction-only` is the default
+
+Pruning a normal request rewrites part of the message prefix, which invalidates the provider's prompt (KV) cache from the mutation point on: the suffix is re-read at full price, while the removed tokens would only have saved the cached-read price. The compaction request is different — after a compaction the checkpoint replaces the whole prefix, so no cache is reused afterwards, and its input is the biggest single request in a session (we have measured 565-message compaction requests). Pruning there cuts the most expensive request without paying for extra cache, and a leaner input tends to produce a leaner checkpoint, which every later request pays for. If your provider does not cache prompts, `mode: "per-request"` is a pure win instead.
 
 ### Why `keepThreshold` defaults to 0.15, not 0.5
 
@@ -84,6 +91,7 @@ Decisions are applied to **clones**: input messages and tool parts are never mut
 
 ## Caveats
 
+- In `compaction-only` mode the plugin does nothing until a compaction happens; the context grows until the runtime compacts (auto or manual). That is the point — it keeps the prompt cache intact — but it also means the context-reduction effect is deferred.
 - Decisions are cached per `tool_use_id`: a call judged once keeps that verdict for the rest of the session.
 - `keepThreshold: 0.5` (upstream's default) drops nearly every unpinned call in a long session; the `0.15` default exists to keep the call and truncate only its result.
 - Jev can be wrong. The decision log keeps every action so you can audit and re-tune.

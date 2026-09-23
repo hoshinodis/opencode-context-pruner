@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { applyActions, planActions, toLibMessages, totalResultChars } from "../src/logic.js"
+import { applyActions, isCompactionRequest, planActions, toLibMessages, totalResultChars } from "../src/logic.js"
 import type { AiMessage } from "../src/logic.js"
 
 const long = "x".repeat(2000)
@@ -133,6 +133,45 @@ console.log("PASS mapping")
   assert.equal(messages.length, 2)
   assert.ok((messages[0].content ?? []).some((part) => part.id === "c1"))
   console.log("PASS empty message removal")
+}
+
+// 7. compaction request detection
+{
+  const user = (text: string, id?: string): AiMessage => ({
+    id,
+    role: "user",
+    content: [{ type: "text", text }],
+  })
+  assert.equal(isCompactionRequest([user("fix the test", "m1")]), false)
+  assert.equal(
+    isCompactionRequest([
+      user("You MUST summarize the conversation above into a structured summary that will be given to another agent to resume the work.\n\nSummarize only the history shown."),
+    ]),
+    true,
+    "initial compaction prompt",
+  )
+  assert.equal(
+    isCompactionRequest([user("Update the existing checkpoint in the conversation above into one consolidated summary.")]),
+    true,
+    "checkpoint update prompt",
+  )
+  assert.equal(isCompactionRequest([user("Rewrite the running checkpoint into a fresh summary.")]), true, "unknown id-less variant")
+  assert.equal(isCompactionRequest([user("この要約をevaluateのときに実行して通知したい", "msg_1")]), false, "real user message with an id")
+  assert.equal(
+    isCompactionRequest([user("<conversation-checkpoint>\n<summary>old summary</summary>\n</conversation-checkpoint>")]),
+    false,
+    "checkpoint body is not a compaction request",
+  )
+  assert.equal(
+    isCompactionRequest([
+      user("You MUST summarize the conversation above into a structured summary."),
+      { id: "a1", role: "assistant", content: [{ type: "text", text: "ok" }] },
+      user("now fix the test", "m9"),
+    ]),
+    false,
+    "only the last user message counts",
+  )
+  console.log("PASS compaction detection")
 }
 
 console.log("ALL PASS")

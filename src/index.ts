@@ -4,11 +4,20 @@ import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 
 import { JevClient } from "./vendor/client.js"
-import { applyActions, DEFAULTS, planActions, setMessages, totalResultChars } from "./logic.js"
-import type { Action, AdapterOptions, AiMessage } from "./logic.js"
+import {
+  applyActions,
+  DEFAULT_MODE,
+  DEFAULTS,
+  isCompactionRequest,
+  planActions,
+  setMessages,
+  totalResultChars,
+} from "./logic.js"
+import type { Action, AdapterOptions, AiMessage, PruneMode } from "./logic.js"
 
 type Options = AdapterOptions & {
   enabled?: boolean
+  mode?: PruneMode
   model?: string
   apiKeyEnv?: string
   apiKeyFile?: string
@@ -39,6 +48,10 @@ export default define({
     const ctx = rawCtx as Ctx
     const options = ctx.options as Options
     const enabled = options.enabled !== false && process.env.TYPESAFE_COMPACTION !== "off"
+    const mode: PruneMode =
+      options.mode === "per-request" || process.env.TYPESAFE_PRUNER_MODE === "per-request"
+        ? "per-request"
+        : DEFAULT_MODE
     const model = options.model ?? "jev-1.13.0"
     const apiKeyEnv = options.apiKeyEnv ?? "TYPESAFE_API_KEY"
     const apiKeyFile = options.apiKeyFile ?? join(homedir(), ".config/opencode/typesafe/api_key")
@@ -86,6 +99,8 @@ export default define({
         if (!enabled) return
         const messages = event.messages
         if (!Array.isArray(messages) || messages.length === 0) return
+        const compaction = isCompactionRequest(messages)
+        if (mode === "compaction-only" && !compaction) return
         if (totalResultChars(messages) < minResultChars) return
 
         const sessionID = String(event.sessionID ?? "?")
@@ -122,6 +137,8 @@ export default define({
             ts: new Date().toISOString(),
             event: "apply",
             sessionID,
+            mode,
+            compaction,
             messages: messages.length,
             judged: plan.judged,
             batches: plan.batches,
@@ -144,6 +161,6 @@ export default define({
       }
     })
 
-    log({ ts: new Date().toISOString(), event: "setup", enabled, model, minResultChars })
+    log({ ts: new Date().toISOString(), event: "setup", enabled, mode, model, minResultChars })
   },
 })

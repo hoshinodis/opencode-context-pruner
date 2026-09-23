@@ -1,6 +1,6 @@
 {
   "name": "opencode-context-pruner",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Continuous verbatim context pruning for OpenCode, powered by TypeSafe Jev. Port of fast-jev-compaction adapted to OpenCode's context hook.",
   "license": "MIT",
   "type": "module",

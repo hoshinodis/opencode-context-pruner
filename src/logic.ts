@@ -31,13 +31,11 @@ export type AdapterOptions = {
 
 export type Action = "keep" | "drop_result" | "drop_call"
 
-/**
- * per-request: 毎リクエストで剪定する(キャッシュを壊す可能性がある)。
- * compaction-only: compact の要約リクエストだけ剪定する(既定)。
- */
+/** per-request: compaction＋gapSeconds以上空いたときだけ剪定 / compaction-only: compactのみ（既定） */
 export type PruneMode = "per-request" | "compaction-only"
 
 export const DEFAULT_MODE: PruneMode = "compaction-only"
+export const DEFAULT_GAP_SECONDS = 3600
 
 export type PlanResult = {
   /** tool_use_id -> action（keep も含む） */
@@ -125,6 +123,17 @@ export const totalResultChars = (messages: readonly AiMessage[]): number =>
     0,
   )
 
+/** Jev を呼ばずに未判定のツールコール数を数える（gapゲートの検証ログ用）。 */
+export const countPendingCalls = (args: {
+  messages: readonly AiMessage[]
+  options: AdapterOptions
+  cache: ReadonlyMap<string, Action>
+}): number => {
+  const resolved = resolve(args.options)
+  const calls = collectToolCalls(toLibMessages(args.messages), resolved.preserveRecentMessages)
+  return calls.filter((call) => !call.pinned && !args.cache.has(call.tool_use_id)).length
+}
+
 const messageText = (message: AiMessage): string =>
   (Array.isArray(message.content) ? message.content : [])
     .filter((part) => part.type === "text")
@@ -156,6 +165,20 @@ export const isCompactionRequest = (messages: readonly AiMessage[]): boolean => 
     return true
   }
   return false
+}
+
+/** このリクエストを剪定するか。idleMs が undefined のときはセッション初回(冷とみなす)。 */
+export const shouldPrune = (args: {
+  mode: PruneMode
+  compaction: boolean
+  idleMs?: number
+  gapSeconds: number
+}): boolean => {
+  if (args.compaction) return true
+  if (args.mode === "compaction-only") return false
+  if (args.gapSeconds <= 0) return true
+  if (args.idleMs === undefined) return true
+  return args.idleMs >= args.gapSeconds * 1000
 }
 
 const resolve = (options: AdapterOptions) =>

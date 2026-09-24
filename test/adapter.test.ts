@@ -1,5 +1,13 @@
 import assert from "node:assert/strict"
-import { applyActions, isCompactionRequest, planActions, toLibMessages, totalResultChars } from "../src/logic.js"
+import {
+  applyActions,
+  countPendingCalls,
+  isCompactionRequest,
+  planActions,
+  shouldPrune,
+  toLibMessages,
+  totalResultChars,
+} from "../src/logic.js"
 import type { AiMessage } from "../src/logic.js"
 
 const long = "x".repeat(2000)
@@ -172,6 +180,29 @@ console.log("PASS mapping")
     "only the last user message counts",
   )
   console.log("PASS compaction detection")
+}
+
+// 8. prune gate: compaction always prunes; per-request only after the gap
+{
+  const gap = 3600
+  assert.equal(shouldPrune({ mode: "compaction-only", compaction: false, idleMs: 10 * 3600_000, gapSeconds: gap }), false)
+  assert.equal(shouldPrune({ mode: "compaction-only", compaction: true, idleMs: 1000, gapSeconds: gap }), true)
+  assert.equal(shouldPrune({ mode: "per-request", compaction: false, idleMs: 10 * 60_000, gapSeconds: gap }), false, "warm: leave it alone")
+  assert.equal(shouldPrune({ mode: "per-request", compaction: false, idleMs: 2 * 3600_000, gapSeconds: gap }), true, "cold: prune")
+  assert.equal(shouldPrune({ mode: "per-request", compaction: false, idleMs: undefined, gapSeconds: gap }), true, "first request in a session")
+  assert.equal(shouldPrune({ mode: "per-request", compaction: false, idleMs: 1000, gapSeconds: 0 }), true, "gapSeconds 0 = always prune")
+  assert.equal(shouldPrune({ mode: "per-request", compaction: true, idleMs: 1000, gapSeconds: gap }), true, "compaction always prunes")
+  console.log("PASS prune gate")
+}
+
+// 9. countPendingCalls counts unjudged, unpinned calls without calling Jev
+{
+  const messages = makeMessages()
+  const cache = new Map<string, "keep">()
+  assert.equal(countPendingCalls({ messages, options: { preserveRecentMessages: 2 }, cache }), 1)
+  cache.set("call_1", "keep")
+  assert.equal(countPendingCalls({ messages, options: { preserveRecentMessages: 2 }, cache }), 0)
+  console.log("PASS pending count")
 }
 
 console.log("ALL PASS")

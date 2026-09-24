@@ -6,11 +6,14 @@ import { dirname, join } from "node:path"
 import { JevClient } from "./vendor/client.js"
 import {
   applyActions,
+  countPendingCalls,
+  DEFAULT_GAP_SECONDS,
   DEFAULT_MODE,
   DEFAULTS,
   isCompactionRequest,
   planActions,
   setMessages,
+  shouldPrune,
   totalResultChars,
 } from "./logic.js"
 import type { Action, AdapterOptions, AiMessage, PruneMode } from "./logic.js"
@@ -18,6 +21,7 @@ import type { Action, AdapterOptions, AiMessage, PruneMode } from "./logic.js"
 type Options = AdapterOptions & {
   enabled?: boolean
   mode?: PruneMode
+  gapSeconds?: number
   model?: string
   apiKeyEnv?: string
   apiKeyFile?: string
@@ -52,6 +56,7 @@ export default define({
       options.mode === "per-request" || process.env.TYPESAFE_PRUNER_MODE === "per-request"
         ? "per-request"
         : DEFAULT_MODE
+    const gapSeconds = options.gapSeconds ?? DEFAULT_GAP_SECONDS
     const model = options.model ?? "jev-1.13.0"
     const apiKeyEnv = options.apiKeyEnv ?? "TYPESAFE_API_KEY"
     const apiKeyFile = options.apiKeyFile ?? join(homedir(), ".config/opencode/typesafe/api_key")
@@ -70,6 +75,7 @@ export default define({
     const rejudge = options.rejudge === "always"
 
     const caches = new Map<string, Map<string, Action>>()
+    const lastSeen = new Map<string, number>()
     let client: JevClient | undefined
     let warnedNoKey = false
 
@@ -99,11 +105,18 @@ export default define({
         if (!enabled) return
         const messages = event.messages
         if (!Array.isArray(messages) || messages.length === 0) return
-        const compaction = isCompactionRequest(messages)
-        if (mode === "compaction-only" && !compaction) return
-        if (totalResultChars(messages) < minResultChars) return
 
         const sessionID = String(event.sessionID ?? "?")
+        const now = Date.now()
+        const previous = lastSeen.get(sessionID)
+        const idleMs = previous === undefined ? undefined : now - previous
+        lastSeen.set(sessionID, now)
+        if (lastSeen.size > 50) {
+          const oldest = lastSeen.keys().next().value
+          if (oldest !== undefined) lastSeen.delete(oldest)
+        }
+
+        const compaction = isCompactionRequest(messages)
         let cache = caches.get(sessionID)
         if (!cache || rejudge) {
           cache = new Map()
@@ -113,6 +126,24 @@ export default define({
           const oldest = caches.keys().next().value
           if (oldest !== undefined) caches.delete(oldest)
         }
+
+        if (!shouldPrune({ mode, compaction, idleMs, gapSeconds })) {
+          const pending = countPendingCalls({ messages, options: adapterOptions, cache })
+          if (pending > 0) {
+            log({
+              ts: new Date().toISOString(),
+              event: "skip",
+              reason: "gap",
+              sessionID,
+              mode,
+              idleSec: idleMs === undefined ? null : Math.round(idleMs / 1000),
+              pending,
+            })
+          }
+          return
+        }
+
+        if (totalResultChars(messages) < minResultChars) return
 
         if (!client) {
           const key = await resolveKey()
@@ -139,6 +170,7 @@ export default define({
             sessionID,
             mode,
             compaction,
+            idleSec: idleMs === undefined ? null : Math.round(idleMs / 1000),
             messages: messages.length,
             judged: plan.judged,
             batches: plan.batches,
@@ -161,6 +193,6 @@ export default define({
       }
     })
 
-    log({ ts: new Date().toISOString(), event: "setup", enabled, mode, model, minResultChars })
+    log({ ts: new Date().toISOString(), event: "setup", enabled, mode, gapSeconds, model, minResultChars })
   },
 })

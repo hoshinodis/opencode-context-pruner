@@ -29,7 +29,7 @@ type Options = AdapterOptions & {
   rejudge?: "never" | "always"
 }
 
-type ContextHookEvent = {
+type HookEvent = {
   sessionID?: string
   messages?: AiMessage[]
   system?: Array<{ type: "text"; text: string }>
@@ -39,8 +39,8 @@ type Ctx = {
   options: Record<string, unknown>
   session: {
     hook(
-      name: "context",
-      callback: (event: ContextHookEvent) => Promise<void> | void,
+      name: "context" | "compaction",
+      callback: (event: HookEvent) => Promise<void> | void,
       options?: { providerID?: string },
     ): Promise<unknown>
   }
@@ -100,7 +100,7 @@ export default define({
       return fromFile || undefined
     }
 
-    await ctx.session.hook("context", async (event) => {
+    const prune = async (event: HookEvent, hook: "context" | "compaction") => {
       try {
         if (!enabled) return
         const messages = event.messages
@@ -116,7 +116,8 @@ export default define({
           if (oldest !== undefined) lastSeen.delete(oldest)
         }
 
-        const compaction = isCompactionRequest(messages)
+        // compaction フックは署名検出不要。フックの無い古い runtime の compaction は context 側で署名検出する
+        const compaction = hook === "compaction" || isCompactionRequest(messages)
         let cache = caches.get(sessionID)
         if (!cache || rejudge) {
           cache = new Map()
@@ -169,6 +170,7 @@ export default define({
             event: "apply",
             sessionID,
             mode,
+            hook,
             compaction,
             idleSec: idleMs === undefined ? null : Math.round(idleMs / 1000),
             messages: messages.length,
@@ -188,11 +190,31 @@ export default define({
         log({
           ts: new Date().toISOString(),
           event: "error",
+          hook,
           error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
         })
       }
-    })
+    }
 
-    log({ ts: new Date().toISOString(), event: "setup", enabled, mode, gapSeconds, model, minResultChars })
+    await ctx.session.hook("context", (event) => prune(event, "context"))
+
+    let compactionHook = false
+    try {
+      await ctx.session.hook("compaction", (event) => prune(event, "compaction"))
+      compactionHook = true
+    } catch {
+      // 古い runtime は compaction フックを登録できない（context 側の署名検出が受け持つ）
+    }
+
+    log({
+      ts: new Date().toISOString(),
+      event: "setup",
+      enabled,
+      mode,
+      gapSeconds,
+      model,
+      minResultChars,
+      compactionHook,
+    })
   },
 })

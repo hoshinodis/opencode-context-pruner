@@ -2,7 +2,7 @@
 
 Continuous, verbatim context pruning for [OpenCode](https://opencode.ai), powered by TypeSafe [Jev](https://docs.typesafe.ai/).
 
-Adapted from [fast-jev-compaction](https://github.com/tamaratran/fast-jev-compaction) (MIT). Upstream targets Claude Code's `session.compact` hook. OpenCode (tested: `opencode2` `0.0.0-beta-19271`) has no compaction hook to rely on, so this port prunes the **outgoing model request** from the `context` hook instead: stale tool calls/results are judged per call (keep / truncate / drop) and removed from the request view. Persisted history is never modified, so nothing disappears from your session log.
+Adapted from [fast-jev-compaction](https://github.com/tamaratran/fast-jev-compaction) (MIT). Upstream targets Claude Code's `session.compact` hook. This port prunes the **outgoing model request** from OpenCode's session hooks instead: stale tool calls/results are judged per call (keep / truncate / drop) and removed from the request view. Compaction requests are pruned directly on the `compaction` hook (`2.0.x`); on older runtimes without it (tested `0.0.0-beta-19271`) the same request arrives on the `context` hook and is recognized by its synthetic prompt signature. Persisted history is never modified, so nothing disappears from your session log.
 
 By default it prunes only **compaction requests** (`mode: "compaction-only"`): the summary input is the largest single request in a session, and pruning it does not invalidate a prompt cache that would otherwise be reused. Set `mode: "per-request"` to also prune normal requests, but only after `gapSeconds` (default 3600) of silence — a warm prompt cache is never invalidated, and a cold one is a free moment to prune.
 
@@ -12,7 +12,7 @@ Long coding sessions fill up with stale tool output. Instead of an LLM-written s
 
 ## How it works
 
-1. `session.hook("context")` runs right before each model dispatch. In the default `compaction-only` mode the hook returns immediately unless the request is a compaction (summarization) request — detected by the synthetic, id-less compaction prompt (`You MUST summarize the conversation above…` / `Update the existing checkpoint…`), because the `compaction` hook never fires on `beta-19271`
+1. `session.hook("compaction")` and `session.hook("context")` run right before each model dispatch. Compaction (summarization) requests are pruned on the `compaction` hook; normal requests are pruned on the `context` hook, which in the default `compaction-only` mode returns immediately. On runtimes without a `compaction` hook the compaction request is recognized on the `context` hook by the synthetic, id-less compaction prompt (`You MUST summarize the conversation above…` / `Update the existing checkpoint…`)
 2. messages are converted to the vendor core's shape; each tool call gets two `noul` questions: keep the call? keep the result?
 3. decisions are applied to the request's message view:
    - `drop_call` removes the call and its result
@@ -33,9 +33,13 @@ time:     1,135 ms
 result:   model replied normally
 ```
 
+## Measured (2026-09-24, `compaction` hook on `2.0.15`)
+
+A manual compaction fired `session.hook("compaction")` and the request view was rewritten from the hook (decision log: `hook: "compaction"`, `compaction: true`, `changedMessages: 3`, `applied: true`). The runtime builds the provider request from the event object the hooks return — `SessionModelRequest.prepare` reads `system` / `messages` / `tools` back off it — so a replaced `event.messages` is what gets sent.
+
 ## Requirements
 
-- OpenCode V2 beta **`0.0.0-beta-19271` or newer**
+- OpenCode V2 beta **`0.0.0-beta-19271` or newer**; compaction requests are pruned directly on `2.0.x` (older runtimes fall back to `context`-hook signature detection)
 - TypeSafe API key: `TYPESAFE_API_KEY` in the environment of the OpenCode server, or `~/.config/opencode/typesafe/api_key`
 
 ## Install

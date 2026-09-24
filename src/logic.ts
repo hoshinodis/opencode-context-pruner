@@ -147,10 +147,7 @@ const COMPACTION_PROMPT =
 /** 未知の変種を拾う保険。id が無い合成プロンプトに限って使う。 */
 const SYNTHETIC_PROMPT_HINT = /summar|checkpoint|conversation above|history shown/i
 
-/**
- * 最後のユーザーメッセージが compact の要約リクエストかを判定する。
- * beta-19271 では compaction フックが発火しないため、context フックで署名から検出する。
- */
+/** 最後のユーザーメッセージが compact リクエストか（compaction フックが無い古い runtime 用の署名検出）。 */
 export const isCompactionRequest = (messages: readonly AiMessage[]): boolean => {
   for (let index = messages.length - 1; index >= 0; index--) {
     const message = messages[index]

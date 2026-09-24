@@ -25,7 +25,7 @@ export type AdapterOptions = {
   truncateHeadChars?: number
   maxStateTokens?: number
   maxRequestTokens?: number
-  /** Skip everything when the transcript holds fewer result characters than this. */
+  /** ツール結果の合計がこれ未満なら何もしない。 */
   minResultChars?: number
 }
 
@@ -40,9 +40,8 @@ export type PruneMode = "per-request" | "compaction-only"
 export const DEFAULT_MODE: PruneMode = "compaction-only"
 
 export type PlanResult = {
-  /** tool_use_id -> action (includes keeps, so the caller can cache all judgments). */
+  /** tool_use_id -> action（keep も含む） */
   actions: Map<string, Action>
-  /** How many tool calls were judged in this call. */
   judged: number
   stateTokens: number
   stateStage: string
@@ -51,7 +50,7 @@ export type PlanResult = {
 }
 
 export const DEFAULTS = {
-  // 上流(0.5)より緩め。継続的に剪定する運用では、0.15だと「呼び出しは残して結果だけ短縮」が標準になる
+  // 上流は0.5。0.15だと「呼び出しは残して結果だけ短縮」が標準になる
   keepThreshold: 0.15,
   preserveRecentMessages: 10,
   truncateHeadChars: 300,
@@ -168,10 +167,7 @@ const resolve = (options: AdapterOptions) =>
     truncateHeadChars: options.truncateHeadChars ?? DEFAULTS.truncateHeadChars,
   } satisfies CompactOptions)
 
-/**
- * 未判定のツールコールだけを Jev に判定させ、tool_use_id -> action を返す。
- * cache には過去の判定(keep 含む)が入っており、この関数が新しい判定を書き戻す。
- */
+/** 未判定のツールコールだけ Jev に判定させ、cache に書き戻す。 */
 export const planActions = async (args: {
   messages: readonly AiMessage[]
   asker: JevAsker
@@ -237,11 +233,7 @@ export type ApplyResult = {
 const hasContent = (message: AiMessage): boolean =>
   Array.isArray(message.content) && message.content.length > 0
 
-/**
- * 判定を opencode の Message[] に適用する。
- * 入力のメッセージ/part は書き換えず、変更が必要なメッセージだけ複製して返す
- * (フックのドラフトが共有オブジェクトを含んでいても永続履歴を壊さないため)。
- */
+/** 判定を適用した Message[] を返す（入力は書き換えない）。 */
 export const applyActions = (
   messages: readonly AiMessage[],
   actions: ReadonlyMap<string, Action>,
@@ -305,10 +297,7 @@ export const applyActions = (
   }
 }
 
-/**
- * event.messages を差し替える。代入が効かない実装では何も変更しない
- * (共有配列を in-place で書き換えると永続履歴を壊すおそれがあるため)。
- */
+/** event.messages を差し替える（代入できない実装では何もしない）。 */
 export const setMessages = (target: { messages?: AiMessage[] }, messages: AiMessage[]): boolean => {
   try {
     target.messages = messages

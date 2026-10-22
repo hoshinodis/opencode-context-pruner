@@ -22,6 +22,7 @@ type Options = AdapterOptions & {
   enabled?: boolean
   mode?: PruneMode
   gapSeconds?: number
+  baseUrl?: string
   model?: string
   apiKeyEnv?: string
   apiKeyFile?: string
@@ -57,7 +58,13 @@ export default define({
         ? "per-request"
         : DEFAULT_MODE
     const gapSeconds = options.gapSeconds ?? DEFAULT_GAP_SECONDS
-    const model = options.model ?? "jev-1.13.0"
+    const baseUrl =
+      options.baseUrl ??
+      process.env.TYPESAFE_PRUNER_BASE_URL?.trim() ??
+      process.env.TYPESAFE_BASE_URL?.trim() ??
+      undefined
+    const model =
+      options.model ?? process.env.TYPESAFE_PRUNER_MODEL?.trim() ?? "jev-1.13.0"
     const apiKeyEnv = options.apiKeyEnv ?? "TYPESAFE_API_KEY"
     const apiKeyFile = options.apiKeyFile ?? join(homedir(), ".config/opencode/typesafe/api_key")
     const logFile =
@@ -84,7 +91,7 @@ export default define({
       void appendFile(logFile, JSON.stringify(entry) + "\n").catch(() => {})
     }
 
-    if (enabled && !process.env[apiKeyEnv]?.trim()) {
+    if (enabled && !baseUrl && !process.env[apiKeyEnv]?.trim()) {
       const fileKey = await readFile(apiKeyFile, "utf8").catch(() => "")
       if (!fileKey.trim()) {
         console.warn(
@@ -148,14 +155,14 @@ export default define({
 
         if (!client) {
           const key = await resolveKey()
-          if (!key) {
+          if (!key && !baseUrl) {
             if (!warnedNoKey) {
               warnedNoKey = true
               console.warn(`[context-pruner] no API key (${apiKeyEnv} or ${apiKeyFile}); compaction disabled`)
             }
             return
           }
-          client = new JevClient({ apiKey: key, model })
+          client = new JevClient({ apiKey: key, model, baseUrl })
         }
 
         const plan = await planActions({ messages, asker: client, options: adapterOptions, cache })
@@ -212,6 +219,7 @@ export default define({
       enabled,
       mode,
       gapSeconds,
+      baseUrl: baseUrl ?? "(typesafe)",
       model,
       minResultChars,
       compactionHook,

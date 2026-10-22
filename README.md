@@ -40,7 +40,7 @@ A manual compaction fired `session.hook("compaction")` and the request view was 
 ## Requirements
 
 - OpenCode V2 beta **`0.0.0-beta-19271` or newer**; compaction requests are pruned directly on `2.0.x` (older runtimes fall back to `context`-hook signature detection)
-- TypeSafe API key: `TYPESAFE_API_KEY` in the environment of the OpenCode server, or `~/.config/opencode/typesafe/api_key`
+- TypeSafe API key: `TYPESAFE_API_KEY` in the environment of the OpenCode server, or `~/.config/opencode/typesafe/api_key`. Not required for a custom endpoint (`baseUrl` / `TYPESAFE_PRUNER_BASE_URL` / `TYPESAFE_BASE_URL`).
 
 ## Install
 
@@ -65,7 +65,8 @@ Plugin options can be passed through OpenCode's plugin config; defaults below.
 | `enabled` | `true` | `TYPESAFE_COMPACTION=off` also disables |
 | `mode` | `compaction-only` | `compaction-only` prunes only compaction requests; `per-request` also prunes normal requests after `gapSeconds` of silence (`TYPESAFE_PRUNER_MODE=per-request` also switches) |
 | `gapSeconds` | `3600` | in `per-request` mode, how long the session must be idle before a normal request is pruned; `0` prunes every request |
-| `model` | `jev-1.13.0` | pinned Jev model |
+| `baseUrl` | `TYPESAFE_PRUNER_BASE_URL` / `TYPESAFE_BASE_URL` / TypeSafe's endpoint | full endpoint URL, e.g. `http://host:11434/v1/systemone`; a custom endpoint needs no API key |
+| `model` | `TYPESAFE_PRUNER_MODEL` / `jev-1.13.0` | pinned Jev model |
 | `keepThreshold` | `0.15` | `noul` threshold for keeping a call/result (upstream uses `0.5`; see below) |
 | `preserveRecentMessages` | `10` | newest messages are never judged |
 | `truncateHeadChars` | `300` | head kept when truncating a result |

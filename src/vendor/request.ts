@@ -24,8 +24,8 @@ export function buildJevRequest(
     url: params.baseUrl ?? SYSTEM_ONE_URL,
     method: 'POST',
     headers: {
-      authorization: `Bearer ${params.apiKey}`,
       'content-type': 'application/json',
+      ...(params.apiKey ? { authorization: `Bearer ${params.apiKey}` } : {}),
     },
     body: JSON.stringify({
       model: params.model ?? DEFAULT_MODEL,

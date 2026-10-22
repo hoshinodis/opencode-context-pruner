@@ -1,6 +1,6 @@
 {
   "name": "opencode-context-pruner",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Continuous verbatim context pruning for OpenCode, powered by TypeSafe Jev. Port of fast-jev-compaction adapted to OpenCode's context hook.",
   "license": "MIT",
   "type": "module",
@@ -48,6 +48,6 @@
     "build": "tsc -p tsconfig.build.json",
     "prepare": "npm run build",
     "typecheck": "tsc --noEmit",
-    "test": "tsc -p tsconfig.test.json && node out/test/adapter.test.js"
+    "test": "tsc -p tsconfig.test.json && node out/test/adapter.test.js && node out/test/client.test.js"
   }
 }

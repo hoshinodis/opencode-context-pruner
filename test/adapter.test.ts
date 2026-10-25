@@ -205,4 +205,54 @@ console.log("PASS mapping")
   console.log("PASS pending count")
 }
 
+// 10. 1リクエストの質問数は Jev の上限64問（=32コール）以下に収まる
+{
+  const messages: AiMessage[] = [
+    { id: "m0", role: "user", content: [{ type: "text", text: "go" }] },
+  ]
+  for (let index = 0; index < 70; index++) {
+    messages.push({
+      role: "assistant",
+      content: [
+        { type: "tool-call", id: `c${index}`, name: "read", input: { file_path: `f${index}.ts` } },
+      ],
+    })
+    messages.push({
+      role: "tool",
+      content: [
+        {
+          type: "tool-result",
+          id: `c${index}`,
+          name: "read",
+          result: { type: "text", value: "x".repeat(2000) },
+        },
+      ],
+    })
+  }
+  const sizes: number[] = []
+  const asker = {
+    ask: async (_state: unknown, questions: Record<string, unknown>) => {
+      sizes.push(Object.keys(questions).length)
+      return {
+        answers: Object.fromEntries(
+          Object.keys(questions).map((key) => [key, { type: "noul", noul: 0.1 } as const]),
+        ),
+      }
+    },
+  }
+  const plan = await planActions({
+    messages,
+    asker,
+    options: { preserveRecentMessages: 0 },
+    cache: new Map(),
+  })
+  assert.equal(plan.judged, 70)
+  assert.equal(plan.batches, 3)
+  assert.ok(
+    sizes.every((size) => size > 0 && size <= 64),
+    `question counts within 1-64: ${sizes.join(",")}`,
+  )
+  console.log("PASS question limit")
+}
+
 console.log("ALL PASS")

@@ -1,7 +1,7 @@
 import { batchCalls, decideCall, questionsFor, resolveOptions } from "./vendor/compact.js"
 import { noulAnswer } from "./vendor/request.js"
 import { collectToolCalls, fitState } from "./vendor/state.js"
-import type { CompactOptions, JevAsker, Message as LibMessage } from "./vendor/types.js"
+import type { CompactOptions, JevAsker, Message as LibMessage, ToolCall } from "./vendor/types.js"
 
 export type ContentPart = {
   type?: string
@@ -178,6 +178,17 @@ export const shouldPrune = (args: {
   return args.idleMs >= args.gapSeconds * 1000
 }
 
+/** Jev は1リクエスト64問まで（1コール=2問）なので32コールで切る。 */
+export const MAX_CALLS_PER_REQUEST = 32
+
+const capBatchSize = (group: readonly ToolCall[]): ToolCall[][] => {
+  const chunks: ToolCall[][] = []
+  for (let index = 0; index < group.length; index += MAX_CALLS_PER_REQUEST) {
+    chunks.push(group.slice(index, index + MAX_CALLS_PER_REQUEST))
+  }
+  return chunks
+}
+
 const resolve = (options: AdapterOptions) =>
   resolveOptions({
     keepThreshold: options.keepThreshold ?? DEFAULTS.keepThreshold,
@@ -207,7 +218,7 @@ export const planActions = async (args: {
     const fitted = fitState(lib, calls, resolved)
     stateTokens = fitted.tokens
     stateStage = fitted.stage
-    const groups = batchCalls(pending, fitted.tokens, resolved)
+    const groups = batchCalls(pending, fitted.tokens, resolved).flatMap(capBatchSize)
     batches = groups.length
     const byShortId = new Map(calls.map((call) => [call.id, call]))
     const results = await Promise.all(

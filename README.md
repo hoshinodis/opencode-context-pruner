@@ -13,7 +13,7 @@ Long coding sessions fill up with stale tool output. Instead of an LLM-written s
 ## How it works
 
 1. `session.hook("compaction")` and `session.hook("context")` run right before each model dispatch. Compaction (summarization) requests are pruned on the `compaction` hook; normal requests are pruned on the `context` hook, which in the default `compaction-only` mode returns immediately. On runtimes without a `compaction` hook the compaction request is recognized on the `context` hook by the synthetic, id-less compaction prompt (`You MUST summarize the conversation above…` / `Update the existing checkpoint…`)
-2. messages are converted to the vendor core's shape; each tool call gets two `noul` questions: keep the call? keep the result?
+2. messages are converted to the vendor core's shape; each tool call gets two `noul` questions: keep the call? keep the result? Batches hold at most 32 calls (64 questions, Jev's per-request limit)
 3. decisions are applied to the request's message view:
    - `drop_call` removes the call and its result
    - `drop_result` keeps the call and truncates the result text with a note
